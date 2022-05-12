@@ -148,3 +148,4 @@ hypotenuse_calculation(3,4) # test the function by running some numbers
 hypotenuse_calculation(7,9)
 
 hypotenuse_calculation() # as default was set to 1, inputting no values will produce output of 1.41
+
