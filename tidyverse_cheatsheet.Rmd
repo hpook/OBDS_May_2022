@@ -1,0 +1,139 @@
+---
+title: "tidyverse_cheatsheet"
+author: "Hannah Pook"
+date: '2022-05-13'
+output: html_document
+---
+# Cheatsheet - `tidyverse`
+
+## Table of contents
+
+<!-- 
+Edit as needed when sections are created or renamed.
+-->
+
+- [Core packages](#core-packages)
+- [Key workflow steps in data science](#key-workflow-steps-in-data-science)
+- [Tidy data](#tidy-data)
+- [The pipe operator](#the-pipe-operator)
+- [readr](#readr)
+- [tibble](#tibble)
+- [dplyr](#dplyr)
+- [tidyr](#tidyr)
+- [stringr](#stringr)
+- [More packages in the tidyverse](#more-packages-in-the-tidyverse)
+
+## Core packages
+
+The following packages are automatically loaded and attached to the R session when `library(tidyverse)` is executed.
+
+- [ggplot2](https://ggplot2.tidyverse.org/)
+- [dplyr](https://dplyr.tidyverse.org/)
+- [tidyr](https://tidyr.tidyverse.org/)
+- [readr](https://readr.tidyverse.org/)
+- [purrr](https://purrr.tidyverse.org/)
+- [tibble](https://tibble.tidyverse.org/)
+- [stringr](https://stringr.tidyverse.org/)
+- [forcats](https://forcats.tidyverse.org/)
+
+## Key workflow steps in data science
+
+- Import
+- Tidy
+- Transform
+- Visualise
+- Model
+- Communicate
+
+## Tidy data
+
+- One row = one observation
+- One column = one variable
+- No row names. If identifiers are needed, store them explicitly in a column.
+
+## The pipe operator
+
+More details: <https://magrittr.tidyverse.org/>
+
+- The pipe operator is `%>%`.
+- By default, passes left-hand side value as first argument of right-hand side function.
+- `x %>% f()` is equivalent to `f(x)`.
+- The argument placeholder `.` can be used to insert the value beyond the first argument.
+- `x %>% f(y, .)` is equivalent to `f(y, x)`.
+
+Keyboard shortcuts:
+
+|  OS  | Shortcut |
+| :--: | :------: |
+| macOS | Command-Shift-M |
+| Windows / Linux | Control-Shift-M |
+
+## readr
+
+More details: <https://readr.tidyverse.org/>
+
+- `read_csv()` / `write_csv()`
+- `read_tsv()` / `write_tsv()`
+- `read_delim()` / `write_delim()`
+- `read_rds()` / `write_rds()`
+
+## tibble
+
+More details: <https://tibble.tidyverse.org/>
+
+- Modern version of `data.frame`.
+- Keeps features that have stood the test of time, drops features that used to be convenient but are now frustrating.
+- In particular: does not support row names.
+- Columns are created sequentially: subsequent columns can refer to previously dened ones.
+  + e.g. `tibble(x = 1:5, y = 1, z = x ^ 2 + y)`
+
+## dplyr
+
+More details: <https://dplyr.tidyverse.org/>
+
+- `select()`, selects a subset of columns.
+- `mutate()`, creates or update values in one or more columns.
+- `filter()`, filters observation (i.e., rows) using conditions on values in one or more columns.
+- `group_by()`, groups observations with identical values in one or more columns; subsequent functions are applied 
+- `summarise()`, computes summary statistics on groups of observations.
+- `arrange()`, reorders observations according to values in one or more columns.
+- `join()`, combines columns from two tibbles, matching observations by their values in one or more columns.
+  + `inner_join(x, y)`, only includes rows present in both `x` and `y`.
+  + `left_join(x, y)`, includes all rows in `x`.
+  + `right_join(x, y)`, includes all rows in `y`.
+  + `full_join(x, y)`, includes all rows present in either `x` or `y`.
+  + Multiple matches generate one row per match in the output tibble.
+- `pull()`, extracts one column from a tibble as a (named) vector.
+- and more!
+
+## tidyr
+
+More details: <https://tidyr.tidyverse.org/>
+
+- `pivot_longer()`, "lengthens" data, increasing the number of rows and decreasing the number of columns.
+  This generally "tidies" data.
+- `pivot_wider()`, opposite of `pivot_longer`.
+- `separate()`, splits the value of a column into multiple columns (e.g., sample name -> experimental conditions).
+- `unite()`, opposite of `separate`.
+
+## stringr
+
+More details: <https://tidyr.tidyverse.org/>
+
+- `str_sub()`, extracts or replaces substrings from a character vector.
+- `str_trim()`, trims whitespaces.
+- `str_c()`, joins multiple strings into a single string.
+- `str_length()`, queries the length of a string.
+- `str_to_lower()` / `str_to_upper()`, convert case of a string.
+
+## More packages in the tidyverse
+
+- [haven](https://haven.tidyverse.org/)
+- [readxl](https://readxl.tidyverse.org/)
+- [googledrive](https://googledrive.tidyverse.org/)
+- [lubridate](https://lubridate.tidyverse.org/)
+- [hms](https://hms.tidyverse.org/)
+
+# Credits
+
+- Kevin Rue-Albrecht
