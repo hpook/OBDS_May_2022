@@ -1,0 +1,864 @@
+---
+title: "R_Statistics_Example_Code"
+author: "Hannah Pook"
+date: '2022-05-16'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+```
+
+# Demo
+
+## Mean and standard deviation
+
+The base R functions `mean()` and `sd()` compute the mean and standard deviation of a distribution
+
+To demonstrate, let us first generate a vector of random, normally distributed, values.
+
+```{r}
+x <- rnorm(n = 100, mean = 2, sd = 5)
+```
+
+We can then use that vector to demonstrate the functions.
+
+```{r}
+mean(x)
+```
+
+```{r}
+sd(x)
+```
+
+
+**What are optional arguments for those functions?**
+
+
+
+**Why do you think the mean and standard deviation are not exactly those that we would expect?**
+
+
+
+# Exercise 1
+
+## Generate and visualise a distribution
+
+- Generate a vector of 1,000 normally distributed values with mean 10 and standard deviation 5.
+
+```{r}
+set.seed(1) # set the random number generator state
+x <- rnorm(1000, mean=10, sd=5)
+```
+
+- Inspect the output of the `summary()` function for that vector.
+
+```{r}
+summary(x)
+```
+
+- Compute the mean and standard deviation for those values.
+
+```{r}
+mean(x)
+```
+
+```{r}
+sd(x)
+```
+
+- Compute the deciles (i.e. 10 evenly spaced quantiles) for those values.
+
+- Need to use probs=seq to define the steps that we want to be calculated (default is quartiles)
+
+```{r}
+quantile(x, probs=seq(0, 1, 0.1))
+```
+
+- Visualise the distribution of those values as a histogram.
+
+- Note: if want to use ggplot to make a histogram, we need to convert the vector x into a dataframe first 
+
+```{r}
+x_dataframe <- data.frame(x_column=x)
+ggplot(data=x_dataframe, mapping = aes(x=x_column)) +
+  geom_histogram()
+```
+
+- Visualise as vertical lines on the histogram: the mean (red solid), median (red dashed), one standard deviation from the mean (blue solid), and one median absolute deviation from the median (blue dashed).
+
+- We can use the vline function to add a vertical line to the graph and then define the x intercept of this line
+
+```{r}
+ggplot(data=x_dataframe, mapping = aes(x=x_column)) + 
+  geom_histogram() + 
+  geom_vline(xintercept=mean(x), colour="red") +
+  geom_vline(xintercept = median(x), colour="red", linetype="dashed") + 
+  geom_vline(xintercept=mean(x) + sd(x) * c(-1, 1), color = "blue") + 
+  geom_vline(xintercept=median(x) + mad(x) * c(-1, 1), color = "blue", linetype = "dashed")
+```
+
+- Generate a new vector with _a lot_ more values (e.g., one million).
+  Draw again a histogram.
+  How does the distribution compare with more data points?
+  
+- The additional datapoints make the distribution look better 
+- We can use bins= in the geom_histogram to define the number of bins (default is 30) 
+
+```{r}
+x <- rnorm(1000000, mean=10, sd=5)
+x_dataframe <- data.frame(x_column=x)
+ggplot(data=x_dataframe, mapping = aes(x=x_column)) + geom_histogram(bins=1000)
+```
+
+## Query distributions and probabilities
+
+For the standard normal distribution ${\mathcal {N}}(\mu=0 ,\sigma ^{2}=1)$:
+
+- Plot the cumulative distribution function in the range $[-5, 5]$.
+
+```{r}
+# make a vector of the normal distribution and define the quantiles using q=
+pnorm_vector <- pnorm(q=seq(-5, 5, by=0.01), mean=0, sd=1) 
+
+# create a data frame of the norm_vector - note that we need both x and y values 
+pnorm_vector_dataframe <- data.frame(value=pnorm_vector, quantile=seq(-5, 5, by=0.01)) 
+
+# use ggplot to plot
+ggplot(data=pnorm_vector_dataframe, mapping = aes(x=quantile, y=value)) + geom_point()
+```
+
+- Plot the inverse cumulative distribution function for quantiles in 0.01 increment.
+
+```{r}
+# create a qnorm vector - note that the first input is now p, not q
+qnorm_vector <- qnorm(p=seq(0, 1, by=0.01), mean=0, sd=1) 
+
+# create a dataframe of the qnorm_vector
+qnorm_vector_dataframe <- data.frame(value=qnorm_vector, probability=seq(0, 1, by=0.01)) 
+
+# use ggplot to plot
+ggplot(data=qnorm_vector_dataframe, mapping = aes(x=probability, y=value)) + geom_point()
+```
+
+- Plot the density function in the range $[-5, 5]$.
+
+```{r}
+# create a qnorm vector - note that the first input is now p, not q
+dnorm_vector <- dnorm(x=seq(-5, 5, by=0.01), mean=0, sd=1) 
+
+# create a dataframe of the dnorm_vector
+dnorm_vector_dataframe <- data.frame(value=dnorm_vector, quantile=seq(-5, 5, by=0.01)) 
+
+# use ggplot to plot
+ggplot(data=dnorm_vector_dataframe, mapping = aes(x=quantile, y=value)) + geom_point()
+```
+
+- What is the probability of observing a value greater than 2?
+
+- Here we need to use the pnorm function
+- We put q=2 to ask for a probability of observing a value less than 2 
+- We want the probability of getting a value greater than 2 hence we do 1 - the value we calculate 
+
+```{r}
+1-pnorm(q=2, mean=0, sd=1)
+```
+
+- What is the probability of observing a value between -2 and 2?
+
+- We need to subtract the probability of being less than -2 from the probability of being less than 2
+
+```{r}
+pnorm(q=2, mean=0, sd=1) - pnorm(q=-2, mean=0, sd=1)
+```
+
+- What is the probability of observing a value more extreme than -2 or 2?
+
+-This is just 1 - the previous probablity calculated 
+
+```{r}
+1 - (pnorm(q=2, mean=0, sd=1) - pnorm(q=-2, mean=0, sd=1))
+```
+
+# Demo
+
+## Empirical Cumulative Distribution Function
+
+```{r}
+ecdf_iris_sepal_length <- ecdf(iris$Sepal.Length)
+ecdf_iris_sepal_length
+```
+
+```{r}
+ggplot(iris, aes(Sepal.Length)) +
+  geom_histogram(color = "black", fill = "grey") +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+plot(ecdf_iris_sepal_length, cex = 0.5)
+```
+
+# Demo
+
+## ecdf - Knots
+
+```{r}
+knots(ecdf_iris_sepal_length)
+```
+
+```{r}
+sort(unique(iris$Sepal.Length))
+```
+
+# Demo
+
+## ecdf - Quantiles
+
+```{r}
+quantile(ecdf_iris_sepal_length, c(0, 0.25, 0.5, 0.75, 1))
+```
+
+```{r}
+quantile(iris$Sepal.Length, c(0, 0.25, 0.5, 0.75, 1))
+```
+
+# Demo
+
+## <i class="fab fa-r-project"></i> Functions for Statistical Testing
+
+```{r}
+?pairwise.t.test
+```
+
+```{r}
+help(pairwise.t.test)
+```
+
+# Demo
+
+## Parametric t-test
+
+Two normal distributions.
+
+```{r}
+set.seed(10)
+x <- rnorm(n = 100, mean = 0, sd = 1)
+y <- rnorm(n = 100, mean = 1, sd = 1)
+```
+
+```{r}
+test_data <- bind_rows(
+  tibble(group = "x", value = x),
+  tibble(group = "y", value = y)
+)
+ggplot(test_data, aes(value)) +
+  geom_histogram(fill = "grey", color = "black") +
+  facet_wrap(~group, ncol = 1) +
+  cowplot::theme_cowplot()
+```
+
+Unpaired t-test.
+
+```{r}
+t.test(value ~ group, test_data)
+```
+
+Compare with
+
+```{r}
+t.test(x, y)
+```
+
+```{r}
+t.test(y, x)
+```
+
+# Demo
+
+## Non-parametric wilcoxon test
+
+Two uniform distributions
+
+```{r}
+set.seed(10)
+x <- runif(n = 100, min = 1, max = 11)
+y <- runif(n = 100, min = 3, max = 13)
+```
+
+```{r}
+test_data <- bind_rows(
+  tibble(group = "x", value = x),
+  tibble(group = "y", value = y)
+)
+gg <- ggplot(test_data, aes(value)) +
+  facet_wrap(~group, ncol = 1) +
+  geom_histogram(fill = "grey", color = "black") +
+  cowplot::theme_cowplot()
+gg
+```
+]
+
+Mann-Whitney U test
+
+```{r}
+wilcox.test(value ~ group, test_data)
+```
+
+Directed hypothesis
+
+```{r}
+wilcox.test(value ~ group, test_data, alternative = "less")
+```
+
+# Demo
+
+## Paired test
+
+For each sample, the two measurements are related to one another; e.g. patients measured before and after a treatment.
+
+```{r}
+set.seed(10)
+n_sample <- 100
+x <- runif(n = n_sample, min = 10, max = 20)
+y <- x + 2 + rnorm(n = n_sample, mean = 0, sd = 1)
+```
+
+```{r}
+test_data <- tibble(
+  sample = paste("sample", seq_len(n_sample)),
+  x = x,
+  y = y
+) %>% pivot_longer(cols = c(x, y), names_to = "variable")
+```
+
+```{r}
+ggplot(test_data, aes(variable, value)) +
+  geom_line(aes(group = sample), size = 0.1) +
+  geom_point() +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+t.test(x, y, paired = TRUE)
+```
+
+# Demo
+
+## Analysis of Variance (ANOVA)
+
+```{r}
+set.seed(10)
+n_sample <- 1000
+x1 <- rnorm(n = n_sample, mean = 10, sd = 2)
+x2 <- x1 + 5 + rnorm(n = n_sample, mean = 0, sd = 1)
+x3 <- x2 + 0 + rnorm(n = n_sample, mean = 0, sd = 0.5)
+test_data <- bind_rows(
+  tibble(group = "x1", value = x1),
+  tibble(group = "x2", value = x2),
+  tibble(group = "x3", value = x3)
+)
+```
+
+```{r}
+test_data <- bind_rows(
+  tibble(group = "x1", value = x1),
+  tibble(group = "x2", value = x2),
+  tibble(group = "x3", value = x3)
+)
+gg <- ggplot(test_data, aes(value)) +
+  facet_wrap(~group, ncol = 1) +
+  geom_histogram(fill = "grey", color = "black") +
+  cowplot::theme_cowplot()
+gg
+```
+
+```{r}
+out <- aov(value ~ group, test_data)
+out
+```
+
+```{r}
+summary(out)
+```
+
+# Demo
+
+## Linear models
+
+```{r}
+set.seed(10)
+test_data <- tibble(
+  x = rnorm(n = 50, mean = 0, sd = 1),
+  y = 10 + 2.5 * x + rnorm(n = 50, mean = 0, sd = 0.5))
+```
+
+```{r}
+ggplot(test_data, aes(x = x, y = y)) +
+  geom_point() +
+  stat_smooth(method = "glm", se = FALSE) +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+lm(y ~ x, test_data)
+```
+
+# Demo
+
+## Linear models - summary
+
+```{r}
+lm(y ~ x, test_data) %>% summary()
+```
+
+# Demo
+
+## Fisher's Exact Test
+
+```{r}
+x_table <- matrix(data = c(12, 4, 3, 23),
+  nrow = 2,
+  dimnames = list(
+    c("DE","Not DE"),
+    c("in_pathway", "not_pathway")
+  ))
+knitr::kable(x_table)
+```
+
+```{r}
+fisher.test(x_table)
+```
+
+# Demo
+
+## Beware of interpreting inadequate tests!
+
+Two uniform distributions.
+
+```{r}
+set.seed(10)
+n_size <- 10E3
+x <- runif(n = n_size, min = 1, max = 11)
+y <- runif(n = n_size, min = 3, max = 13)
+```
+
+```{r}
+test_data <- bind_rows(
+  tibble(group = "x", value = x),
+  tibble(group = "y", value = y)
+)
+gg <- ggplot(test_data, aes(value)) +
+  facet_wrap(~group, ncol = 1) +
+  geom_histogram(fill = "grey", color = "black") +
+  cowplot::theme_cowplot()
+gg
+```
+
+Nothing prevents users from running a parametric test.
+
+```{r}
+t.test(value ~ group, test_data)
+```
+
+# Demo
+
+## Knowledge assumptions - Central tendency
+
+```{r, message=FALSE, warning=FALSE}
+x_mean <- 0
+x_sd <- 20
+data_table <- tibble(x = as.integer(rnorm(n = 10E3, mean = x_mean, sd = x_sd)))
+summary_table <- bind_rows(
+  tibble(Value = "mean", value = mean(data_table$x)),
+  tibble(Value = "median", value = median(data_table$x)),
+  tibble(Value = "mode", value = as.integer(names(which.max(table(data_table$x)))))
+)
+data_table %>% 
+  ggplot() +
+  geom_histogram(aes(x = x), color = "black", fill = "grey") +
+  geom_vline(aes(xintercept = value, color = Value), summary_table, size = 2, alpha = 0.3) +
+  cowplot::theme_cowplot()
+```
+
+# Demo
+
+## Knowledge assumptions - Normality
+
+Normal distribution
+
+```{r}
+x <- rnorm(n = 5000, mean = 0, sd = 1)
+```
+
+```{r}
+ggplot(tibble(x=x)) +
+  geom_histogram(aes(x), fill = "grey", color = "black", bins = 20) +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+shapiro.test(x)
+```
+
+Log-normal distribution
+
+```{r}
+x <- 2^rnorm(n = 5000, mean = 0, sd = 1)
+```
+
+```{r}
+ggplot(tibble(x=x)) +
+  geom_histogram(aes(x), fill = "grey", color = "black", bins = 20) +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+shapiro.test(x)
+```
+
+# Demo
+
+## Knowledge assumptions - Normality
+
+Normal distribution
+
+```{r}
+x <- rnorm(n = 5000, mean = 5, sd = 3)
+qqnorm(x)
+```
+
+Log-normal distribution
+
+```{r}
+x <- 2^rnorm(n = 5000, mean = 0, sd = 1)
+qqnorm(x)
+```
+
+# Demo
+
+## Multiple-testing correction
+
+For 1,000 iterations, generate two vectors of normally distributed values with mean 0 and standard deviation 1, and run a t-test to compare the two.
+
+```{r}
+set.seed(10)
+n_tests <- 1000
+compute_p_value <- function(dummy) {
+  x <- rnorm(n = 100, mean = 0, sd = 1)
+  y <- rnorm(n = 100, mean = 0, sd = 1)
+  out <- t.test(x, y)
+  out$p.value
+}
+result_table <- tibble(
+  pvalue = vapply(X = seq_len(n_tests), FUN = compute_p_value, FUN.VALUE = numeric(1)),
+  BH = p.adjust(p = pvalue, method = "BH"),
+  bonferroni = p.adjust(p = pvalue, method = "bonferroni")
+)
+```
+
+Illustrate one iteration.
+
+```{r, include=TRUE, echo=FALSE, fig.height=3}
+data_table <- tibble(
+  x = rnorm(n = 100, mean = 0, sd = 1),
+  y = rnorm(n = 100, mean = 0, sd = 1)
+) %>% pivot_longer(cols = c(x, y))
+ggplot(data_table) +
+  geom_boxplot(aes(name, value)) +
+  geom_jitter(aes(name, value), width = 0.1)
+```
+
+Plot the distribution of raw p-values.
+
+```{r, include=TRUE, echo=FALSE, fig.height=3}
+ggplot(result_table) +
+  geom_histogram(aes(pvalue), fill = "grey", color = "black", breaks = seq(0, 1, 0.05)) +
+  scale_x_continuous(limits = c(0, 1)) +
+  labs(title = "Raw p-value")
+```
+
+Print a short report message.
+
+```{r, include=TRUE, echo=FALSE, results='asis'}
+cat(sprintf("There are %i out of %i raw p-values smaller than 0.05", sum(result_table$pvalue < 0.05), n_tests))
+```
+
+Plot corrected p-values using BH correction.
+
+```{r, include=TRUE, echo=FALSE, fig.height=3}
+ggplot(result_table) +
+  geom_histogram(aes(BH), fill = "grey", color = "black", bins = 20) +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title = "BH correction")
+```
+
+Print a short report message.
+
+```{r, include=TRUE, echo=FALSE, results='asis'}
+cat(sprintf("There are %i BH-corrected p-values smaller than 0.05", sum(result_table$BH < 0.05)))
+```
+
+Plot corrected p-values using Bonferroni correction.
+
+```{r, include=TRUE, echo=FALSE, fig.height=3}
+ggplot(result_table) +
+  geom_histogram(aes(bonferroni), fill = "grey", color = "black", bins = 20) +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title = "bonferroni correction")
+```
+
+Print a short report message.
+
+```{r, include=TRUE, echo=FALSE, results='asis'}
+cat(sprintf("There are %i bonferonni corrected p-values smaller than 0.05", sum(result_table$bonferroni < 0.05)))
+```
+
+# Exercise 2
+
+## Testing & Multiple testing correction
+
+Given an Excel file that contains a matrix of log-normalised counts (`logcounts`) and experimental metadata (`cell_info`),
+test each gene (i.e., row) in the matrix for differential expression between the two experimental groups.
+Start by importing the `logcounts` table and converting it to a matrix.
+
+```{r}
+excel_sheets("/project/obds/shared/resources/3_r_stats_genomics/statistics/data/GSE111543.xlsx")
+
+logcounts_matrix <- read_excel("/project/obds/shared/resources/3_r_stats_genomics/statistics/data/GSE111543.xlsx", sheet="logcounts")
+
+logcounts_matrix <- column_to_rownames(logcounts_matrix, "gene") # convert the column "gene" into row names
+
+logcounts_matrix <- as.matrix(logcounts_matrix) # convert to matrix
+
+head(logcounts_matrix)
+
+dim(logcounts_matrix)
+```
+
+```{r}
+cell_info <- read_excel("/project/obds/shared/resources/3_r_stats_genomics/statistics/data/GSE111543.xlsx", sheet="cell_info")
+
+all(cell_info$Sample == colnames(logcounts_matrix)) # check whether the names of the cells are in the same order in the matrix and the table
+
+head(cell_info)
+```
+
+### Approach
+
+1. Write the code to test a single gene and access the p-value.
+
+```{r}
+gene_index <- 1
+
+gene_values_1 <- logcounts_matrix[1,] # extract the first column and assign this to a variable
+
+cell_info_Infection <- cell_info$Infection # extract the group information about cells from the cell_info table
+
+test_data_1 <- data.frame("Values" = gene_values_1, "Infection" = cell_info_Infection) # combine the 2 vectors created into a single data frame 
+
+out <- t.test(Values ~ Infection, data=test_data_1) # carry out the t test on the test_data_1 data frame created 
+
+out
+
+out$p.value # to display just the p value 
+```
+
+2. Write a function that generalises the code to test any one gene and return the p-value.
+
+- We are going to write a function so that if we give the gene index we can test the p values of individual genes 
+
+- We define the inputs as index, matrix, and metadata 
+
+- We alter the code where we extract the gene values, so that the values extracted correspond to the index number
+
+```{r}
+t_test_row <- function(index, matrix, metadata) {
+  gene_values <- matrix[index,]
+  cell_infection <- metadata$Infection
+  test_data_frame <- data.frame("Values" = gene_values, "Infection" = cell_infection)
+  out <- t.test(Values ~ Infection, data=test_data_frame)
+  return(out$p.value)
+}
+
+t_test_row(index = 1, matrix = logcounts_matrix, metadata = cell_info) # check that the function works by running the function on index 1 and seeing if the answer is the same as above 
+
+t_test_row(index = 2, matrix = logcounts_matrix, metadata = cell_info) # check that we get a different answer if we input a different index
+
+```
+
+3. Use the function `vapply` to test every row in the matrix and collect a vector of p-values.
+
+- Define X as a sequence starting at one and ending at the number of rows in our matrix 
+
+- Define the function as the custom function that we just created
+
+- FUN.VALUE is the output that we expect from this function - in this case we expect a p value (numeric). We write numeric(1) to show that we expect a numeric value of length 1
+
+- After defining FUN.VALUE we can add in the inputs needed for our custom function (matrix and metadata)
+
+```{r}
+t_test_pvalues <- vapply(
+  X = seq(1, nrow(logcounts_matrix)),
+  FUN = t_test_row,
+  FUN.VALUE = numeric(1), 
+  matrix= logcounts_matrix, 
+  metadata= cell_info
+)
+
+head(t_test_pvalues)
+```
+
+### Bonus points
+
+- Visualise a histogram of the p-values.
+
+- If we have more values close to zero than we would expect by chance it indicates that there are likely to be differentially expressed genes 
+
+```{r}
+t_test_dataframe <- data.frame("p_values"=t_test_pvalues)
+
+ggplot(data=t_test_dataframe, aes(x=p_values)) +
+  geom_histogram(fill="turquoise")
+```
+
+- Correct p-values for multiple testing.
+  How many genes remain before and after multiple testing?
+
+```{r}
+result_bh <- p.adjust(t_test_dataframe$p_values, method="bonferroni") 
+
+table(result_bh<0.05) # this will give us a table telling us how many p values are under 0.05 and how many are not 
+
+table(t_test_pvalues<0.05) # this shows the number of p values under 0.05 prior to the multiple testing correction 
+
+```
+
+- Use `gene_info` to get the gene name for the gene identifier with the smallest p-value.
+
+```{r}
+gene_table <- read_excel("/project/obds/shared/resources/3_r_stats_genomics/statistics/data/GSE111543.xlsx", sheet="gene_info")
+
+which.min(result_bh) # this gives us the location of the smallest value in the table 
+
+row.names(logcounts_matrix)[3676] # this will give us the row name of this value in the logcounts matrix 
+
+filter(gene_table, gene_id == "ENSG00000131203") # this will give us the gene name based on the row name entered 
+
+```
+
+# Exercise 3
+
+## Over-representation analysis (ORA)
+
+Given the list of genes (Ensembl gene identifiers) that your identified as differentially expressed in the previous exercise,
+and a list of gene sets (`go_db`),
+test each gene set for over-representation of differentially expressed genes.
+Start by importing the Gene Ontology table and converting it to a list.
+
+```{r}
+go_table <- read_excel("/project/obds/shared/resources/3_r_stats_genomics/statistics/data/GSE111543.xlsx", sheet="go_db")
+
+go_list <- split(go_table$ensembl_gene_id, go_table$go_id) # split the table into a list - this makes it easier to extract different elements from this list (each element is a pathway)
+
+go_list[1] # this is used to extract a pathway
+```
+
+### Approach
+
+1. Write the code to test a single gene set and access the p-value.
+
+```{r}
+
+query <- rownames(logcounts_matrix)[result_bh < 0.05] # create a vector called query which includes the names of the genes in which the p value is <0.05
+
+query <- na.omit(query) # omit NA values from query vector 
+
+universe <- rownames(logcounts_matrix) # define a second vector which contains the rownames of logcounts_matrix (names of all the genes which have been tested)
+
+geneset <- go_list[[1]]
+
+# Make a data frame where one column lists every gene tested, one column asks whether the gene is in the pathway, and one column asks whether the gene is differentially expressed 
+
+cross_table <- data.frame(
+  gene_id = universe,
+  geneset = factor(universe %in% geneset, c(TRUE, FALSE)),
+  query = factor(universe %in% query, c(TRUE, FALSE))
+)
+
+# Make a second table which is 2 by 2, listing number of genes in pathway and which are differentially expressed 
+test_table <- table(cross_table$geneset, cross_table$query)
+
+fisher.test(test_table)$p.value # run a fisher test on the second table
+
+out <- fisher.test(test_table)
+out$p.value
+```
+
+2. Write a function that generalises the code to test any one gene set and return the p-value.
+
+```{r}
+fisher_test_pathway <- function(index, pathways, query, universe) {
+  query <- na.omit(query)
+  geneset <- pathways[[index]]
+  cross_table <- data.frame(
+    gene_id = universe,
+    geneset = factor(universe %in% geneset, c(TRUE, FALSE)),
+    query = factor(universe %in% query, c(TRUE, FALSE))
+  )
+  test_table <- table(cross_table$geneset, cross_table$query)
+  fisher.test(test_table)$p.value
+  out <- fisher.test(test_table)
+  return(out$p.value)
+}
+
+fisher_test_pathway(
+  index = 1, 
+  pathways = go_list,
+  query = names(result_bh)[result_bh < 0.05],
+  universe = rownames(logcounts_matrix)
+  )
+```
+
+3. Use the function `vapply` to test every gene set in the list and collect a vector of p-values.
+
+```{r}
+fisher_test_pvalues <- vapply(
+  X = seq_len(length(go_list)),
+  FUN = fisher_test_pathway,
+  FUN.VALUE = numeric(1),
+  pathways = go_list,
+  query = names(result_bh)[result_bh < 0.05],
+  universe = rownames(logcounts_matrix))
+names(fisher_test_pvalues) <- names(go_list)
+
+head(fisher_test_pvalues)
+```
+
+### Bonus points
+
+- Visualise a bar plot of the p-values.
+
+```{r}
+
+```
+
+- Correct p-values for multiple testing.
+  How many gene sets remain before and after multiple testing?
+
+```{r}
+fisher_test_bh <- 
+
+```
+
+- Use `go_info` to annotate each GO gene set with its corrected p-value,
+  and arrange the table by increasing p-value.
+
+```{r}
+go_info <- read_excel(   )
+
+
+
+```
