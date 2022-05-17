@@ -1,0 +1,583 @@
+---
+title: "dimensionality_reduction_clustering_example_code"
+author: "Hannah Pook"
+date: '2022-05-17'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(umap)
+library(Rtsne)
+library(dendextend)
+library(dbscan)
+```
+
+# Exercise 1
+
+## Setup
+
+- Import the `iris` data set.
+
+```{r}
+iris
+```
+
+- Separate the matrix of measurements in a new object named `iris_features`.
+
+- This is because PCA does not like to work on dataframes so we need to convert to a matrix
+
+- Additionally, we need to remove on columns that have text in them 
+
+```{r}
+iris_features <- as.matrix(iris[, 1:4])
+head(iris_features)
+```
+
+# Exercise 2
+
+## Apply Principal Components Analysis (PCA)
+
+The `prcomp()` function allows you to standardise the data as part of the principal components analysis itself.
+
+- Apply PCA while centering and scaling the matrix of features.
+
+```{r}
+pca_iris <- prcomp(iris_features, retx=TRUE, center=TRUE, scale.=TRUE)
+
+pca_iris
+```
+
+- Examine the PCA output.
+  Display the loading of each feature on each principal component.
+
+```{r}
+pca_iris$rotation
+```
+
+```{r}
+pca_iris$x
+```
+
+- Use the return value of the PCA to create a `data.frame` called `pca_iris_dataframe` that contains the coordinates projected on principal components.
+
+- We make a data frame so that we can visualise the data with ggplot 
+
+```{r}
+pca_iris_dataframe <- data.frame(pca_iris$x)
+head(pca_iris_dataframe)
+```
+
+- Visualise the PCA projection using `ggplot2::geom_point()`.
+
+```{r}
+ggplot(pca_iris_dataframe, aes(x=PC1, y=PC2)) + 
+  geom_point()
+  
+```
+
+### Bonus point
+
+- Color data points according to their class label.
+
+- Store the PCA plot as an object named `pca_iris_species`.
+
+```{r}
+pca_iris_dataframe_species <- mutate(pca_iris_dataframe, Species = iris$Species)
+
+head(pca_iris_dataframe_species)
+```
+
+```{r}
+pca_iris_species <- ggplot(pca_iris_dataframe_species, aes(x=PC1, y=PC2, colour=Species)) + 
+  geom_point()
+  
+  
+pca_iris_species
+```
+
+# Exercise 3
+
+## Variable loading
+
+- Color a scatter plot of PC1 and PC2 by the value of the variable most strongly associated with the first principal component.
+
+What do you observe?
+
+```{r}
+pca_iris$rotation # this is used to identify which variable affects PC1 the most 
+
+head(pca_iris_dataframe)
+
+# create a new dataframe adding petal length alongside PC1-4
+
+pca_iris_dataframe_Petal.Length <- mutate(pca_iris_dataframe, Petal.Length = iris$Petal.Length)
+
+head(pca_iris_dataframe_Petal.Length)
+```
+
+- Here we use ggplot to make a scatter plot, coloured by petal length 
+
+```{r}
+ggplot(pca_iris_dataframe_Petal.Length, aes(x=PC1, y=PC2, colour=Petal.Length)) +
+  geom_point()
+
+```
+
+> Answer:
+> There is a positive loading between petal length and PC1 as we can see a clear gradient of colour (petal length) across the graph 
+
+## Variance explained
+
+- Compute the variance explained by principal components, using information present in the return value of the `prcomp()` function.
+
+```{r}
+pca_iris$sdev # use this to look at the standard deviation of each PCA (ordered 1-4)
+
+pca_iris_variance <- (pca_iris$sdev)^2 # we need to square the sdev to calculate the variances 
+
+pca_iris_variance/sum(pca_iris_variance) # calculate each variance divided by the total variance - this is the percentage of variance explained by each PC
+
+explained_variance_ratio <- pca_iris_variance/sum(pca_iris_variance) # assign this to an object 
+
+explained_variance_ratio
+```
+
+- Visualise the variance explained by each principal component using `ggplot2::geom_col()`.
+
+- Remember that ggplot cannot deal with vectors so we need to create a data frame 
+```{r}
+variance_dataframe <- data.frame(variance=explained_variance_ratio, PC=1:4)
+
+head(variance_dataframe)
+```
+
+```{r}
+ggplot(variance_dataframe, aes(x=PC, y=variance)) +
+  geom_col()
+
+```
+
+- This graph shows us the variance within each variable
+- When looking at RNA seq data, this will help us to decide which genes to keep and which genes to cut 
+
+# Exercise 4
+
+## UMAP
+
+- Apply UMAP on the output of the PCA.
+
+```{r}
+set.seed(1) # control randomness for consistent results
+
+umap_iris <- umap(pca_iris$x) # run umap
+
+umap_iris
+```
+
+- Inspect the UMAP output.
+
+```{r}
+head(umap_iris$layout) # this shows us the x and y co-ordinates (what we want to input to ggplot)
+```
+
+- Visualise the UMAP projection using `ggplot2::geom_point()`.
+
+```{r}
+umap_iris_dataframe <- data.frame(UMAP1=umap_iris$layout[,1], UMAP2=umap_iris$layout[,2])
+
+head(umap_iris_dataframe)
+```
+
+```{r}
+ggplot(umap_iris_dataframe, aes(x=UMAP1, y=UMAP2)) +
+  geom_point()
+  
+```
+
+### Bonus point
+
+- Color data points according to their class label.
+
+- Store the UMAP plot as an object named `umap_iris_species`.
+
+```{r}
+umap_iris_dataframe_species <- mutate(umap_iris_dataframe, Species = iris$Species)
+
+head(umap_iris_dataframe_species)
+```
+
+```{r}
+umap_iris_species <- ggplot(umap_iris_dataframe_species, aes(x=UMAP1, y=UMAP2, colour=Species)) +
+  geom_point()
+  
+umap_iris_species
+```
+
+# Exercise 5
+
+## t-SNE
+
+- Apply t-SNE and inspect the output.
+
+```{r}
+set.seed(1) # control randomness for consistent results 
+
+tsne_iris <- Rtsne(pca_iris$x, check_duplicates=FALSE) # run t-SNE, set check_duplicates to FALSE so that points with the same values don't cause an error 
+
+str(tsne_iris) # inspect output
+```
+
+- Use the return value of the t-SNE to create a `data.frame` called `tsne_iris_dataframe` that contains the coordinates.
+
+```{r}
+tsne_iris_dataframe <- data.frame(tsne1 = tsne_iris$Y[,1], tsne2 = tsne_iris$Y[,2])
+
+head(tsne_iris_dataframe)
+```
+
+- Visualise the t-SNE projection.
+
+```{r}
+ggplot(tsne_iris_dataframe, aes(x=tsne1, y=tsne2)) +
+  geom_point()
+  
+```
+
+### Bonus points
+
+- Color data points according to their class label.
+
+- Store the UMAP plot as an object named `tsne_iris_species`.
+
+```{r}
+tsne_iris_dataframe_species <- mutate(tsne_iris_dataframe, Species = iris$Species)
+
+head(tsne_iris_dataframe_species)
+```
+
+```{r}
+tsne_iris_species <- ggplot(tsne_iris_dataframe_species, aes(x=tsne1, y=tsne2, colour=Species)) +
+  geom_point()
+  
+tsne_iris_species
+```
+
+- Combine PCA, UMAP and t-SNE plots in a single figure.
+
+```{r, fig.height=6, fig.width=6}
+cowplot::plot_grid(pca_iris_species, umap_iris_species, tsne_iris_species, ncol=1, nrow=3)
+```
+
+# Exercise 6
+
+## Hierarchical clustering
+
+- Perform hierarchical clustering on the `iris_features` data set,
+  using the `euclidean` distance and method `ward.D2`.
+
+```{r}
+dist_iris <- dist(iris_features, method="euclidean")
+hclust_iris_ward <- hclust(dist_iris, method="ward.D2")
+str(hclust_iris_ward)
+```
+
+- Plot the clustering tree.
+
+```{r}
+plot(hclust_iris_ward, labels=FALSE)
+
+```
+
+How many clusters would you call from a visual inspection of the tree?
+
+> Answer: difficult to tell - maybe 3
+> 
+> 
+
+- **Bonus point:** Color leaves by known species (use `dendextend`).
+
+```{r}
+iris_hclust_dend <- as.dendrogram(hclust_iris_ward) # convert hclust to dendrogram
+labels_colors(iris_hclust_dend) <- as.numeric(iris$Species) + 3 # convert species labels to numbers, needed to label colours (each number corresponds to a colour so can add +.. to change the colours shown)
+plot(iris_hclust_dend)
+```
+
+- Cut the tree in 3 clusters and extract the cluster label for each flower.
+
+```{r}
+iris_hclust_ward_labels <- cutree(hclust_iris_ward, k=3, h=NULL) # use k to define number of groups OR h to define height of cut (mutually exclusive)
+iris_hclust_ward_labels
+```
+
+- Repeat clustering using 3 other agglomeration methods:
+
+  + `complete`
+  + `average`
+  + `single`
+
+```{r}
+# complete
+hclust_iris_complete <- hclust(dist_iris, method="complete")
+iris_hclust_complete_labels <- cutree(hclust_iris_complete, k=3, h=NULL)
+iris_hclust_complete_labels
+```
+
+```{r}
+# average
+hclust_iris_average <- hclust(dist_iris, method="average")
+iris_hclust_average_labels <- cutree(hclust_iris_average, k=3, h=NULL)
+iris_hclust_average_labels
+```
+
+```{r}
+# single
+hclust_iris_single <- hclust(dist_iris, method="single")
+iris_hclust_single_labels <- cutree(hclust_iris_single, k=3, h=NULL)
+iris_hclust_single_labels
+```
+
+- Compare clustering results on scatter plots of the data.
+
+Make a dataframe where each row is a flower and there is one column for each different clustering method 
+
+```{r}
+iris_clusters_dataframe <- iris 
+iris_clusters_dataframe$hclust_average <- as.factor(iris_hclust_average_labels)
+iris_clusters_dataframe$hclust_complete <- as.factor(iris_hclust_complete_labels)
+iris_clusters_dataframe$hclust_single <- as.factor(iris_hclust_single_labels)
+iris_clusters_dataframe$hclust_ward <- as.factor(iris_hclust_ward_labels)
+
+head(iris_clusters_dataframe)
+```
+
+```{r, fig.height=8, fig.width=10}
+# Create a plot for each different clustering method (added theme_classic for clarity)
+
+plot_average <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=hclust_average)) +
+  geom_point() +
+  theme_classic()
+  
+plot_complete <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=hclust_complete)) +
+  geom_point() +
+  theme_classic()
+  
+plot_single <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=hclust_single)) +
+  geom_point() +
+  theme_classic()
+  
+plot_ward <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=hclust_ward)) +
+  geom_point() +
+  theme_classic()
+  
+library(patchwork)
+(plot_average+plot_complete)/(plot_single+plot_ward) # combine the plots 
+
+```
+
+# Exercise 7
+
+## dbscan
+
+- Apply `dbscan` to the `iris_features` data set.
+
+- dbscan is an alternative way of clustering and is based on density of points (a bit like how the human eye works)
+
+```{r}
+dbscan_iris <- dbscan(iris_features, eps=0.42)
+dbscan_iris
+```
+
+- Visualise the `dbscan` cluster label on a scatter plot of the data.
+
+```{r}
+iris_clusters_dataframe$dbscan <- as.factor(dbscan_iris$cluster)
+head(iris_clusters_dataframe)
+```
+
+```{r}
+dbscan_plot <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=dbscan)) +
+  geom_point() +
+  theme_classic()
+  
+dbscan_plot
+```
+
+## hdbscan
+
+- Apply `hdbscan` to the `iris_features` data set.
+
+```{r}
+hdbscan_iris <- hdbscan(iris_features, minPts=10)
+hdbscan_iris
+```
+
+- Visualise the `hdbscan` cluster label on a scatter plot of the data.
+
+```{r}
+iris_clusters_dataframe$hdbscan <- as.factor(hdbscan_iris$cluster)
+head(iris_clusters_dataframe)
+```
+
+```{r}
+hdbscan_plot <- ggplot(iris_clusters_dataframe, aes(x=Sepal.Length, y=Petal.Length, colour=hdbscan)) +
+  geom_point() +
+  theme_classic()
+  
+hdbscan_plot
+```
+
+## Bonus point
+
+- Combine the plots of `dbscan` and `hdbscan` into a single plot.
+
+```{r, fig.height=3, fig.width=6}
+dbscan_plot+hdbscan_plot
+```
+
+# Exercise 8
+
+## K-means clustering
+
+- Apply $K$-means clustering with $K$ set to 3 clusters.
+
+```{r}
+set.seed(1) # control randomness
+
+kmeans_iris <- kmeans(iris_features, centers=3) # run kmeans to cluster data
+
+kmeans_iris # view result
+```
+
+- Inspect the output.
+
+```{r}
+kmeans_iris$cluster
+```
+
+- Extract the cluster labels.
+
+```{r}
+
+```
+
+- Extract the coordinates of the cluster centers.
+
+```{r}
+kmeans_iris$centers
+```
+
+- Construct a data frame that combines the `iris` dataset and the cluster label.
+
+```{r}
+iris_labelled <- iris
+iris_labelled$Kmeans <- as.factor(kmeans_iris$cluster)
+head(iris_labelled)
+```
+
+- Plot the data set as a scatter plot.
+
+  + Color by cluster label.
+
+```{r}
+iris_plot_kmeans <- ggplot(iris_labelled, aes(x=Sepal.Length, y=Petal.Length, colour=Kmeans)) +
+  geom_point() +
+  theme_classic()
+
+iris_plot_kmeans
+```
+
+### Bonus point
+
+- Add cluster centers as points in the plot.
+
+```{r}
+iris_means_centers <- as.data.frame(kmeans_iris$centers)
+iris_means_centers$Kmeans <- as.factor(c(1, 2, 3))
+head(iris_means_centers)
+```
+
+
+```{r}
+ggplot(iris_labelled, aes(x = Sepal.Length, y = Sepal.Width, color = Kmeans)) +
+  geom_point() +
+  geom_point(
+    aes(x = Sepal.Length, y = Sepal.Width, color = Kmeans),
+    data = iris_means_centers,
+    shape = "x", size = 10
+    )
+```
+
+# Exercise 9
+
+## Cross-tabulation with ground truth
+
+- Cross-tabulate cluster labels with known labels.
+
+- See how well clusters agree with other labels
+
+- We can use the table function to compare data
+
+```{r}
+table(
+  kmeans_iris$cluster,
+  iris$Species
+)
+```
+
+- Here we can see that cluster 3 matches perfectly with setosa species
+
+How many observations are mis-classified by $K$-means clustering?
+
+> Answer:
+> 16
+
+## Elbow plot
+
+- Plot the "total within-cluster sum of squares" for K ranging from 2 to 10.
+
+```{r}
+kmeans_iris$betweenss # calculate the sum of squares between groups
+kmeans_iris$withinss # calculate the sum of squares within groups
+
+kmeans_iris$betweenss/kmeans_iris$totss
+```
+
+```{r}
+# function to provide the sum of squares for a given k
+get_mean_totss_for_k <- function(k, data) {
+  kmeans_out <- kmeans(data, k)
+  return(kmeans_out$tot.withinss)
+}
+k_range <- 2:10
+kmean_totwithinss <- vapply(X=k_range, FUN=get_mean_totss_for_k, FUN.VALUE=numeric(1), data=iris_features)
+
+kmean_totwithinss 
+```
+
+- This shows us that as we increase the number of clusters, the better the clustering gets 
+
+```{r}
+kmean_totwithinss_dataframe <- data.frame(
+  K = k_range,
+  totss = kmean_totwithinss
+)
+head(kmean_totwithinss_dataframe)
+```
+
+```{r}
+ggplot(kmean_totwithinss_dataframe, aes(K, totss) ) +
+geom_point()
+
+```
+
+Do you agree that 3 is the optimal number of clusters for this data set?
+
+> Answer:
+> 
+> Yes, as the plot shows that the biggest difference is between 2 and 3 clusters (after this it is diminishing returns)
+> 
+> 
