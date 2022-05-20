@@ -1,0 +1,314 @@
+---
+title: "pathway_analysis_example_code"
+author: "Hannah Pook"
+date: '2022-05-20'
+output: html_document
+---
+
+This is the pathway analysis practical of the OBDS course 
+- The first part of this practical is using gprofiler to perform ORA on output dataset of differentially expressed genes from DESeq2
+
+# load packages 
+```{r}
+# load libraries
+
+library(tidyverse)
+library(gprofiler2)
+```
+
+# Read in our tables from this morning in a new Rmd file
+```{r}
+# read in files from this morning 
+
+# 1. all results (this was filtered to remove non DE genes in our DESeq2 list so only contains genes expressed in our samples) -> call this table 'all_genes_df'  - this will be our background
+all_genes_df <- read_csv("/project/obds/hpook/projects/DEseq2/CD8_vs_CD4_DE_results_lfcshrinkage_allgenes.csv")
+
+#filter out the genes for which padj is NA 
+all_genes_df_filtered <- all_genes_df %>% filter(!(is.na(padj)))
+
+# 2. all significant upregulated genes -> call this upreg_genes_df
+upreg_genes_df <- read_csv("/project/obds/hpook/projects/DEseq2/CD8_vs_CD4_DKO_DE_results_lfcshrinkage_0.05_log2FC1_up.csv")
+
+# 3. all significant down regulated genes -> call this downreg_genes_df 
+downreg_genes_df <- read_csv("/project/obds/hpook/projects/DEseq2/CD8_vs_CD4_DKO_DE_results_lfcshrinkage_0.05_log2FC1_down.csv")
+
+
+
+# Check the dimensions of each of your dataframes using dim()
+# upreg_genes_df should be 915
+# downreg_genes_df should be 1204
+# all_genes_df_filtered should be 17729
+dim(all_genes_df_filtered)
+dim(upreg_genes_df)
+dim(downreg_genes_df)
+
+```
+Now we want a vector of gene ids to use for analysis 
+
+```{r}
+# from each of these dataframes get a vector of the ensembl ids 
+all_gene_ids_symbols <- all_genes_df_filtered$gene_symbols
+all_gene_ids_entrez <- all_genes_df_filtered$gene_entrezid
+    
+upreg_gene_ids_symbols <- upreg_genes_df$gene_symbols 
+upreg_gene_ids_entrez <- upreg_genes_df$gene_entrezid 
+    
+downreg_gene_ids_symbols <- downreg_genes_df$gene_symbols 
+downreg_gene_ids_entrezid <- downreg_genes_df$gene_entrezid 
+```
+
+#Perform ORA using g:profiler 
+
+1. Look at documentation - https://cran.r-project.org/web/packages/gprofiler2/vignettes/gprofiler2.html
+```{r}
+# use the gost() function - what paramters should we include/change 
+# we want to test the ORA of upreg_gene_ids vs our all_gene_ids
+
+# get help for function
+?gost() 
+
+# write query and assign to output variable named `gost_results_obj`
+
+# set domain scope to false so that it does not use the default background gene set
+# use custom_bg to define our own custom background gene set 
+
+gost_results_obj <- gost(
+  query=list("upreg" = upreg_gene_ids_symbols,  "downreg" = downreg_gene_ids_symbols),
+  organism="mmusculus",
+  exclude_iea=TRUE,
+  correction_method="g_SCS",
+  domain_scope = "custom",
+  custom_bg = all_gene_ids_symbols)
+
+# what are our outputs  
+View(gost_results_obj)
+
+```
+
+```{r}
+# plot our results using in built function in gprofiler -> which one is it? 
+gostplot(gost_results_obj)
+```
+
+```{r}
+## DO NOT run this without highlighting terms it will cause R to crash 
+
+# publish_gosttable(gost_results_obj, show_columns=c("source", "term_name", "term_size", "p_value", "intersection_size"))
+```
+
+
+```{r}
+# what does as_short_link = FALSE do in gost() function? 
+
+# setting as_short_link = TRUE gives us a link to the results which is easy to share with other people 
+# example: 
+gost(
+  query=list("upreg" = upreg_gene_ids_symbols,  "downreg" = downreg_gene_ids_symbols),
+  organism="mmusculus",
+  exclude_iea=TRUE,
+  correction_method="g_SCS",
+  domain_scope = "custom",
+  custom_bg = all_gene_ids_symbols, 
+  as_short_link=TRUE)
+```
+
+
+```{r}
+# Filter results table for genesets with between 5-300 genes 
+
+gost_results_df <- as.data.frame(gost_results_obj$result)
+
+filtered_gost_results <- gost_results_df %>% 
+  filter(term_size>=5 & term_size<=300)
+
+```
+
+
+2. Try querying multiple gene lists at the same time (up and down regulated genes) using Multiple queries - see the documentation 
+
+```{r}
+# did this in the original code, so no extra needed here 
+```
+
+Can you plot these querys together?
+
+```{r}
+# no extra code needed here, already plotted 
+
+```
+
+Output the get_version_info() to save the versions of the databases that were used for the analysis!! 
+```{r}
+version_info <- get_version_info(organism="mmusculus")
+
+version_info
+```
+
+Bonus Exercise!
+
+DESeq2 to FGSEA
+
+we will use the `all_genes_df_filtered` object we already created
+
+For more details look at this vignette : https://stephenturner.github.io/deseq-to-fgsea/
+or the FGSEA official vignette: https://bioconductor.org/packages/release/bioc/vignettes/fgsea/inst/doc/fgsea-tutorial.html  
+to get other genesets like GO/MSigDB genesets in R and for different species use msigdbr : https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html 
+```{r}
+library(fgsea)
+library(msigdbr)
+```
+
+ All you’ll care about later on is the gene symbol and the Log2FoldChange. Get just those, and remove the NAs. Finally, if you have multiple Log2FC values for the same symbol, you’ll want to deal with that in some way. Here I’m just averaging them.
+ 
+
+ 
+```{r}
+# make a dataframe containing the gene symbols and log2FoldChange 
+# use na.omit to remove any rows with NA 
+# use distinct to select unique values 
+all_genes_df_filtered_avg <- all_genes_df_filtered %>% 
+  dplyr::select(gene_symbols,log2FoldChange) %>% 
+  na.omit() %>% 
+  distinct() %>% 
+  group_by(gene_symbols) %>% 
+  summarize(log2FoldChange=mean(log2FoldChange))
+
+all_genes_df_filtered_avg
+
+# create another dataframe 
+new_all_genes_df_filtered_avg <- all_genes_df_filtered %>%
+  mutate("P_val_times_l2FC" = all_genes_df_filtered$pvalue * all_genes_df_filtered$log2FoldChange) %>%
+  dplyr::select(gene_symbols,P_val_times_l2FC) %>%
+  na.omit() %>%
+  distinct() %>%
+  group_by(gene_symbols) %>%
+  summarize(P_val_times_l2FC=mean(P_val_times_l2FC))
+
+new_all_genes_df_filtered_avg
+```
+
+
+We’re going to use the fgsea package for fast preranked gene set enrichment analysis (GSEA)
+
+The fgsea() function requires a list of gene sets to check, and a named vector of gene-level statistics (log2FC), where the names should be the same as the gene names in the pathways list. First, let’s create our named vector of test statistics
+
+See ?tibble::deframe for help here - 
+
+deframe() converts two-column data frames to a named vector or list, using the first column as name and the second column as value.
+```{r}
+?tibble::deframe
+ranks <- deframe(all_genes_df_filtered_avg)
+head(ranks, 20)
+
+ranks_new <- deframe(new_all_genes_df_filtered_avg)
+head(ranks_new, 20)
+```
+
+
+Let’s use the Hallmark gene set from MSigDB. Hallmark gene sets summarize and represent specific well-defined biological states or processes and display coherent expression. These gene sets were generated by a computational methodology based on identifying overlaps between gene sets in other MSigDB collections and retaining genes that display coordinate expression.
+
+you can either download a gmt symbols file directly from MSigDB or use misgidbr
+
+As we have mouse species we will use msigdbr
+
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+head(all_gene_sets)
+
+#There is a helper function to show the available species. Either scientific or common names are acceptable.
+msigdbr_species()
+
+# can use this function to see which collections are available 
+msigdbr_collections()
+```
+
+You can retrieve data for a specific collection, such as the hallmark gene sets.
+
+The msigdbr() function output is a data frame and can be manipulated using more standard method
+
+```{r}
+h_gene_sets = msigdbr(species = "mouse", category = "H")
+```
+
+look at the fgseaSimple() function, how does it want the pathway gensets?
+
+how would you create a named list of genesets with symbols as genes
+
+```{r}
+# the split function can be used to create lists from a dataframe 
+
+# here we are grouping genes by gene set name, we added drop=TRUE so that if there are any genes without a gene set or vice versa these are not included (i.e. we do not create an empty list)
+
+hallmark_list = split(x = h_gene_sets$gene_symbol,
+                      f = h_gene_sets$gs_name,
+                      drop = TRUE)
+head(hallmark_list)
+```
+
+Now we can run fgsea yay!
+```{r}
+# pathways defines the list of gene sets to check, stats defines the named vector of gene-level stats, nperm defines the number of permutations (quick so set to min of 1000), minSize and maxSize are used to determine size of gene sets to be tested 
+
+fgseaRes <- fgsea(pathways = hallmark_list,
+                  stats = ranks,
+                  nperm = 2000, 
+                  minSize = 10, 
+                  maxSize = 500)
+
+fgseaRes
+```
+
+tidy the result
+
+```{r}
+# code to make a tibble and arrange genes by NES in descending order (put most positively enriched pathway at the top) 
+
+fgseaResTidy <- fgseaRes %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+```
+
+
+show in a nice table
+```{r}
+# make a neat table by removing the leadingEdge column, the ES column, and the nMoreExtreme column
+# order by adjusted p values 
+
+fgseaResTidy %>% 
+  dplyr::select(-leadingEdge, -ES, -nMoreExtreme) %>% 
+  arrange(padj) %>% 
+  DT::datatable()
+```
+
+Plot the normalized enrichment scores. Color the bar indicating whether or not the pathway was significant:
+
+```{r}
+ggplot(fgseaResTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+Now only plot the top 10 up and Down NES pathways based on padjusted values
+```{r}
+fgseaResTidy_topNES <- fgseaResTidy %>% 
+  dplyr::filter(padj<0.05) %>% 
+  arrange(desc(NES)) %>% 
+  slice_head(n=10)
+
+fgseaResTidy_topnegNES <- fgseaResTidy %>% 
+  dplyr::filter(padj<0.05) %>% 
+  arrange(desc(NES)) %>% 
+  slice_tail(n=10)
+
+plot_data <- rbind(fgseaResTidy_topNES, fgseaResTidy)
+
+ggplot(plot_data, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
