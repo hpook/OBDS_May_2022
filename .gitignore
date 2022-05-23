@@ -1,1 +1,6 @@
 # Ignore file
+
+dds_filtered_updated
+results_obj
+seurat_after_qc
+seurat_after_qc.RDS
