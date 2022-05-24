@@ -439,6 +439,12 @@ saveRDS(seurat_after_qc, file = "seurat_after_qc.RDS")
 
 ## Identify cluster markers
 
+Load object from yesterday
+
+```{r}
+seurat_after_qc <- readRDS("seurat_after_qc.RDS")
+```
+
 - Use the function `FindAllMarkers()` to identify
   positive markers for all clusters,
   filtering markers that are detected in at least 25% of the cluster,
@@ -449,16 +455,17 @@ saveRDS(seurat_after_qc, file = "seurat_after_qc.RDS")
 
 ```{r}
 seurat_markers_all <- FindAllMarkers(
-    
-    
-    
-    
+  object = seurat_after_qc,
+  logfc.threshold = 0.25,
+  min.pct = 0.25,
+  only.pos = TRUE
 )
+
 class(seurat_markers_all)
 ```
 
 > Answer:
-> 
+> Default is to use current identities, can set the identities before looking for markers 
 
 - How do you read the contents of the object `seurat_markers_all`?
   How do you know which features are the markers of each cluster?
@@ -473,23 +480,27 @@ head(seurat_markers_all)
 - Filter and display the top 10 markers for cluster 3.
 
 ```{r}
+head(filter(seurat_markers_all, cluster==3), n=10)
 
+# an alternative method 
+seurat_markers_all %>% filter(cluster==3) %>% slice_max(order_by = avg_log2FC,n=10)
 ```
 
 - Visualise the expression of the top 4 marker for cluster 3 on a UMAP layout.
 
 ```{r}
-
+FeaturePlot(
+  object = seurat_after_qc,
+  features = c("GZMK", "CCL5", "CST7", "GZMA")
+)
 ```
 
 - Visualise the expression of those same 4 marker as a violin plot.
   Do you have any particular preference between the two types of plots?
 
 ```{r}
-VlnPlot(
-    
-    
-)
+VlnPlot(object = seurat_after_qc,
+  features = c("GZMK", "CCL5", "CST7", "GZMA"))
 ```
 
 > Answer:
@@ -499,11 +510,23 @@ VlnPlot(
   Hint: you may want to use the function `dplyr::group_by()`.
 
 ```{r}
-markers_top10_clusters <- seurat_markers_all %>%
-    
-    
+markers_top10_clusters <- seurat_markers_all %>% 
+  group_by(cluster) %>% 
+  slice_max(order_by = avg_log2FC,n=10)
+  
 DoHeatmap(
-    
-    
-)
+  object = seurat_after_qc,
+  features = markers_top10_clusters$gene)
+
+```
+
+```{r}
+# an alternative method, selecting by lowest p value (i.e. most significant) instead of highest fold change 
+markers_top10_clusters_new <- seurat_markers_all %>% 
+  group_by(cluster) %>% 
+  slice_min(order_by = p_val_adj, n=10, with_ties=FALSE)
+  
+DoHeatmap(
+  object = seurat_after_qc,
+  features = markers_top10_clusters_new$gene)
 ```
