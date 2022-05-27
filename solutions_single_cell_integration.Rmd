@@ -1,0 +1,466 @@
+---
+title: "scRNA-seq data integration solution "
+author: "Devika Agarwal"
+date: "10/02/2021"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, messages = FALSE}
+library(Seurat)
+library(SeuratData)
+library(SeuratWrappers)
+library(patchwork)
+library(tidyverse)
+library(batchelor)
+library(harmony)
+library(lisi)
+library(MAST)
+options(future.globals.maxSize = 4000 * 1024^2)    # Maximum allowed total size (in bytes) of global variables identified
+```
+
+```{r Functions}
+my_featurescatter <- function(seurat_object) {
+    plot1 <- FeatureScatter(seurat_object, 
+                            feature1 = "nCount_RNA", feature2 = "percent.mt")
+    plot2 <- FeatureScatter(seurat_object,
+                            feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+    plot1 + plot2
+}
+normalisation_variable <- function(seurat_object) {
+    seurat_object <- NormalizeData(seurat_object)
+    seurat_object <- FindVariableFeatures(seurat_object)
+}
+normalisation_clustering <- function(seurat_object) {
+    seurat_object <- SCTransform(seurat_object, verbose = FALSE)
+    
+    seurat_object <- RunPCA(seurat_object, verbose = FALSE)
+    seurat_object <- RunUMAP(seurat_object, dims = 1:30, verbose = FALSE)
+    
+    seurat_object <- FindNeighbors(seurat_object, dims = 1:30, verbose = FALSE)
+    seurat_object <- FindClusters(seurat_object, verbose = FALSE)
+    
+    return(seurat_object)
+}
+```
+
+# Read in original objects and do QC
+
+```{r, eval=FALSE}
+# PBMC v2 and PBMC v3 datasets (both 1000 cells)
+pbmcv2 <- Read10X("../data/1k_PBMCs_v2/filtered_feature_bc_matrix/")
+pbmcv3 <- Read10X("../data/1k_PBMCs_v3/filtered_feature_bc_matrix/")
+# Create Seurat objects
+pbmcv2 <- CreateSeuratObject(pbmcv2, project = "v2", min.cells = 3, min.features = 200)
+pbmcv3 <- CreateSeuratObject(pbmcv3, project = "v3", min.cells = 3, min.features = 200)
+```
+
+```{r, eval=FALSE}
+pbmcv2[["percent.mt"]] <- PercentageFeatureSet(pbmcv2, pattern = "^MT-")
+pbmcv3[["percent.mt"]] <- PercentageFeatureSet(pbmcv3, pattern = "^MT-")
+```
+
+```{r, eval=FALSE}
+# Put Seurat objects into a list - use purrr to perform operations on the list elements
+seurat_objects <- list(pbmcv2, pbmcv3)
+```
+
+```{r, eval=FALSE}
+# QC
+plots <- walk(seurat_objects, VlnPlot, 
+              features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+walk(plots, print)
+seurat_objects_rep <- rep(seurat_objects, each = 3)
+features_rep <- rep(c("nFeature_RNA", "nCount_RNA", "percent.mt"), 2)
+thresholds_rep <- list(c(500, 1750), c(1000, 6000), 7.5,
+                       c(750, 2700), c(1000, 12000), 15)
+plots <- pmap(list(seurat_objects_rep, features_rep, thresholds_rep),
+              function(seurat_objects, features, thresholds)
+                  VlnPlot(seurat_objects, feature = features) +
+                  geom_hline(yintercept = thresholds))
+walk(plots, print)
+```
+
+```{r, eval=FALSE}
+plots <- map(seurat_objects, my_featurescatter)
+walk(plots, print)
+```
+
+```{r, eval=FALSE}
+thresholds <- list(c(500, 1750, 1000, 6000, 7.5),
+                   c(750, 2700, 1000, 12000, 15))
+seurat_objects <- map2(seurat_objects, thresholds, 
+                       ~ subset(.x, subset = nFeature_RNA > .y[1] & nFeature_RNA < .y[2] & nCount_RNA > .y[3] & nCount_RNA < .y[4] & percent.mt < .y[5]))
+```
+
+```{r, eval=FALSE}
+# Save filtered seurat_objects
+saveRDS(seurat_objects[[1]], "../results/pbmcv2_filtered.rds")
+saveRDS(seurat_objects[[2]], "../results/pbmcv3_filtered.rds")
+```
+
+read in Qced objects
+```{r}
+pbmcv2 <- readRDS(file="/t1-data/project/obds/shared/resources/4_r_single_cell/integration/pbmcv2_filtered.rds")
+pbmcv3 <- readRDS(file="/t1-data/project/obds/shared/resources/4_r_single_cell/integration/pbmcv3_filtered.rds")
+```
+
+```{r}
+# Put Seurat objects into a list - use purrr to perform operations on the list elements
+seurat_objects <- list(pbmcv2, pbmcv3)
+```
+
+
+plot Violin  plots for both datasets
+```{r}
+features <- list(c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                 c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+plots <- map2(seurat_objects, features, 
+              ~ VlnPlot(.x, features = .y))
+walk(plots, print)
+```
+
+
+
+#### Run normalisation and clustering separately for the two objects to see what they look like
+
+```{r, message = FALSE, warning = FALSE}
+seurat_objects <- map(seurat_objects, normalisation_variable)
+seurat_objects_sct <- map(seurat_objects, SCTransform)
+```
+
+## Merge Seurat objects together (without batch correction)
+
+```{r}
+# https://satijalab.org/seurat/articles/merge_vignette.html
+seurat_merged <- merge(x = seurat_objects[[1]], y = seurat_objects[[2]],add.cell.ids = c("v2", "v3"))
+```
+
+```{r}
+# we checked the merge worked
+dim(pbmcv2)
+dim(pbmcv3)
+dim(seurat_merged)
+#it captured all genes, even if only on one dataset
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+# Normalisation and clustering of merged object without batch correction
+seurat_merged <- normalisation_clustering(seurat_merged) # Runs normlaisation, PCA , clustering and UMAP in one function
+```
+
+Plot to see how the nCount_RNA looks before and after SCT normalisations for the merged dataset?
+
+Did SCT do a good job in normalising the sequencing depth across the two datasets?
+
+```{r}
+VlnPlot(seurat_merged, features = c("nCount_RNA","nCount_SCT"), ncol = 2, pt.size = 0.02, same.y.lims = T, group.by = "orig.ident")
+VlnPlot(seurat_merged, features = c("nFeature_SCT", "nCount_SCT"), ncol = 2, pt.size = 0.02, same.y.lims =TRUE)
+VlnPlot(seurat_merged, features = c("nFeature_SCT", "nFeature_RNA"), ncol = 2, pt.size = 0.02, same.y.lims =TRUE)
+VlnPlot(seurat_merged, features = c("nCount_SCT", "nCount_RNA"), ncol = 2, pt.size = 0.02, same.y.lims =TRUE)
+```
+
+What should the default assay be?
+
+```{r}
+DefaultAssay(seurat_merged) <- "SCT"
+```
+
+how to get SCT slot HVG info
+```{r}
+HVG_df <- HVFInfo(seurat_merged, selection.method = "sct", status = T)
+```
+
+```{r, fig.width=8}
+plot1 <- VariableFeaturePlot(seurat_merged,selection.method = "sct")
+top10 <- VariableFeatures(seurat_merged)[1:10]
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+
+
+
+Plot UMAP by dataset and clusters 
+
+Is there a batch effect?
+
+Do cells cluster by celltypes?
+
+```{r}
+DimPlot(seurat_merged, group.by = c("orig.ident", "seurat_clusters"))
+FeaturePlot(seurat_merged, features = c("CD3E", "CD4", "CD8A", 
+                                        "MS4A1", "CD14", "FCGR3A","LYZ","GNLY"))
+```
+
+## Seurat integration ----
+
+Different approaches:
+1. Multiple dataset integration - each dataset given equal weight
+
+### Multiple dataset integration without SCTransform
+
+```{r}
+# https://satijalab.org/seurat/articles/integration_introduction.html
+# Seurat objects have already been normalised separately and variable features identified
+# Select features that are repeatedly variable across datasets for integration
+shared_features <- SelectIntegrationFeatures(seurat_objects)
+# We then identify anchors using the FindIntegrationAnchors() function, which takes a list of Seurat objects as input, and use these anchors to integrate the two datasets together with IntegrateData()
+seuratv3_anchors <- FindIntegrationAnchors(object.list = seurat_objects, 
+                                           anchor.features = shared_features, dims = 1:30)
+# This command creates an 'integrated' data assay
+all_features <- lapply(seurat_objects, row.names) %>% 
+    Reduce(intersect, .)
+seuratv3_integrated <- IntegrateData(seuratv3_anchors, 
+                                     features.to.integrate = all_features, dims = 1:30)
+DefaultAssay(seuratv3_integrated)   # new assay "integrated"
+```
+
+```{r}
+# Downstream analysis on the integrated data
+# PCA, UMAP and clustering
+seuratv3_integrated <- ScaleData(seuratv3_integrated, verbose = FALSE)
+seuratv3_integrated <- RunPCA(seuratv3_integrated, npcs = 50, verbose = FALSE)
+ElbowPlot(seuratv3_integrated, ndims = 50)
+seuratv3_integrated <- RunUMAP(seuratv3_integrated, reduction = "pca", dims = 1:15)
+seuratv3_integrated <- FindNeighbors(seuratv3_integrated, reduction = "pca", dims = 1:15)
+seuratv3_integrated <- FindClusters(seuratv3_integrated, resolution = 0.5)   # on joint data
+table(seuratv3_integrated@meta.data$integrated_snn_res.0.5)
+plots <- DimPlot(seuratv3_integrated, 
+                 group.by = c("orig.ident", "integrated_snn_res.0.5"), 
+                 combine = FALSE)
+plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 3, 
+                                                                                                              byrow = TRUE, override.aes = list(size = 3))))
+plots[[1]] + plots[[2]]
+FeaturePlot(seuratv3_integrated, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1"))
+```
+
+
+
+
+
+```{r}
+# Visualisation doesn't look best with the integrated counts
+# Suggestion in vignette to normalise the RNA data for visualisation
+DefaultAssay(seuratv3_integrated) <- "RNA"
+seuratv3_integrated <- NormalizeData(seuratv3_integrated, verbose = FALSE)
+FeaturePlot(seuratv3_integrated, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1"))
+# Looks much better - less background signal
+# FeaturePlot takes the "data" slot by default
+```
+
+```{r, warning = FALSE}
+# Find marker genes for clusters
+DefaultAssay(seuratv3_integrated) <- "RNA"
+marker_genes_LR <- FindAllMarkers(seuratv3_integrated, method = "LR", 
+                                  latent.vars = "orig.ident")
+marker_genes_MAST <- FindAllMarkers(seuratv3_integrated, method = "MAST", 
+                                    latent.vars = c("nCount_RNA", "orig.ident"))
+```
+
+### Multiple dataset integration with SCTransform
+
+```{r}
+# https://satijalab.org/seurat/articles/integration_introduction.html
+# Start from seurat_objects list - have performed normalisation and clustering separately for the two datasets
+# Use SCTransform workflow as we will have discussed how this works better than the standard normalisation procedure
+# Harmonise Pearson residuals that are output from SCTransform
+#pbmc.list <- lapply(X = pbmc.list, FUN = SCTransform, variable.features.n=3000, verbose = FALSE)   
+# Select the top 2000 genes (based on whether they are found in both datasets or only one)
+# Recommend to use 3000 for data normalised with SCTransform
+shared_features_sct <- SelectIntegrationFeatures(object.list = seurat_objects_sct, 
+                                                 nfeatures = 3000)
+# Residuals are recomputed for missing features using the stored model parameters via the GetResidual function
+# Subsets scale.data slot to only contain residuals for anchor.features for efficiency in downstream processing
+seuratv3_objects_sct <- PrepSCTIntegration(object.list = seurat_objects_sct, 
+                                           anchor.features = shared_features_sct,
+                                           verbose = FALSE)
+# After this step, the features present in the scale.data slots of the two objects are the same
+# anchor.features are used in the anchor finding process
+# Perform dimension reduction (CCA), L2 normalisation of embedding vectors
+# Identify anchors
+# Remove low confidence anchors
+# Assign remaining anchors a score
+seuratv3_anchors_sct <- FindIntegrationAnchors(object.list = seuratv3_objects_sct,
+                                               normalization.method = "SCT",
+                                               anchor.features = shared_features_sct,
+                                               verbose = FALSE)
+# For CCA, will use the anchor.features
+# Warning in Seurat v3 can be safely ignored and is fixed in Seurat v4 (https://github.com/satijalab/seurat/issues/3622)
+# Integrate data
+seuratv3_integrated_sct <- IntegrateData(anchorset = seuratv3_anchors_sct,
+                                         normalization.method = "SCT",
+                                         features.to.integrate = all_features,
+                                         verbose = FALSE)
+# Nothing to worry about with the message in Seurat v3 (https://github.com/satijalab/seurat/issues/2505)
+# Clusters present here are still the original clusters - need to perform clustering to get joint clusters
+# If normalization.method = "SCT", the integrated data is returned to the scale.data slot and can be treated as centered, corrected Pearson residuals.
+# DefaultAssay now set to integrated rather than SCT
+DefaultAssay(seuratv3_integrated_sct)
+dim(GetAssayData(seuratv3_integrated_sct, slot = "scale.data"))
+# PCA, UMAP and clustering
+seuratv3_integrated_sct <- RunPCA(seuratv3_integrated_sct, npcs = 50, 
+                                  verbose = FALSE)
+ElbowPlot(seuratv3_integrated_sct, ndims = 50)
+seuratv3_integrated_sct <- RunUMAP(seuratv3_integrated_sct, reduction = "pca", 
+                                   dims = 1:15)
+seuratv3_integrated_sct <- FindNeighbors(seuratv3_integrated_sct, 
+                                         reduction = "pca", dims = 1:15)
+seuratv3_integrated_sct <- FindClusters(seuratv3_integrated_sct, 
+                                        resolution = 0.5)   # on joint data
+table(seuratv3_integrated_sct@meta.data$integrated_snn_res.0.5)
+```
+
+```{r}
+plots <- DimPlot(seuratv3_integrated_sct, 
+                 group.by = c("orig.ident", "integrated_snn_res.0.5"), 
+                 combine = FALSE)
+plots <- lapply(X = plots, FUN = function(x) x +
+                    theme(legend.position = "top") + 
+                    guides(color = guide_legend(nrow = 3, byrow = TRUE, 
+                                                override.aes = list(size = 3))))
+plots[[1]] + plots[[2]]
+FeaturePlot(seuratv3_integrated_sct, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1"))
+```
+
+
+###  Bonus Exercise: Reference-based workflow
+
+```{r}
+# https://satijalab.org/seurat/articles/integration_large_datasets.html
+# Input seuratv3_objects_sct - already run SelectIntegrationFeatures and PrepSCTIntegration
+seuratv3_anchors_ref <- FindIntegrationAnchors(object.list = seuratv3_objects_sct,
+                                               normalization.method = "SCT",
+                                               anchor.features = shared_features_sct,
+                                               reference = 2,
+                                               verbose = FALSE)
+seuratv3_integrated_ref <- IntegrateData(anchorset = seuratv3_anchors_ref,
+                                         normalization.method = "SCT",
+                                         verbose = FALSE)
+# Downstream analysis on the integrated data
+seuratv3_integrated_ref <- RunPCA(seuratv3_integrated_ref, verbose = FALSE)
+seuratv3_integrated_ref <- RunUMAP(seuratv3_integrated_ref, dims = 1:30)
+seuratv3_integrated_ref <- FindNeighbors(seuratv3_integrated_ref, dims = 1:30)
+seuratv3_integrated_ref <- FindClusters(seuratv3_integrated_ref)    # on joint PCA
+table(seuratv3_integrated_ref@meta.data$integrated_snn_res.0.8)
+```
+
+```{r}
+plots <- DimPlot(seuratv3_integrated_ref, 
+                 group.by = c("orig.ident", "integrated_snn_res.0.8"), 
+                 combine = FALSE)
+plots <- lapply(X = plots, FUN = function(x) x + 
+                    theme(legend.position = "top") + 
+                    guides(color = guide_legend(nrow = 3, byrow = TRUE, 
+                                                override.aes = list(size = 3))))
+plots[[1]] + plots[[2]]
+FeaturePlot(seuratv3_integrated_ref, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1"))
+```
+
+Better separation of CD4 and CD8 T cells compared with joint analysis
+
+
+## Harmony integration
+Vignette: http://htmlpreview.github.io/?https://github.com/immunogenomics/harmony/blob/master/docs/SeuratV3.html
+
+
+```{r, warning = FALSE}
+seurat_merged <- merge(x = seurat_objects[[1]], y = seurat_objects[[2]])
+seurat_merged <- SCTransform(seurat_merged, verbose = FALSE)
+seurat_merged <- RunPCA(seurat_merged, verbose = FALSE)
+DimPlot(seurat_merged, group.by = "orig.ident")
+seurat_merged <- RunHarmony(seurat_merged, group.by.vars = "orig.ident",
+                            dims.use = 1:30, assay.use = "SCT")
+seurat_merged <- RunUMAP(seurat_merged, reduction = "harmony", dims = 1:30)
+seurat_merged <- FindNeighbors(seurat_merged, reduction = "harmony", dims = 1:30)
+seurat_merged <- FindClusters(seurat_merged)
+DimPlot(seurat_merged, group.by = "orig.ident")
+DimPlot(seurat_merged, group.by = "seurat_clusters")
+FeaturePlot(seurat_merged, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1"))
+# CD4 and CD8 T cells are nicely separated
+# Small CD16+ monocyte cluster with cells from both datasets
+```
+
+
+Compute LISI : https://github.com/immunogenomics/LISI 
+
+```{r}
+# Compute integration LISI and cell-type LISI
+# iLISI - effective number of datasets in a neighbourhood - want this to equal number of batches
+# cLISI - want this to equal 1 - number of cell types in neighbourhood i.e. different cell types should form distinct clusters
+meta_data_cells <- data.frame(technology = seurat_merged@meta.data$orig.ident)
+lisi_res <- lisi::compute_lisi(Embeddings(seurat_merged, reduction = "harmony"), 
+                               meta_data_cells, 
+                               "technology")
+# Should you use clusters determined from joint embedding for clisi?
+cat("LISI values - iLISI mean and range, cLISI mean and range")
+mean(lisi_res$technology)   # 1.70 (2 would be perfect if equal number of cells in two datasets)
+range(lisi_res$technology)
+# For cLISI, need to separately annotate cell types in the two individual datasets
+```
+
+
+## FastMNN correction
+
+In Seurat, fastMNN example page (https://htmlpreview.github.io/?https://github.com/satijalab/seurat.wrappers/blob/master/docs/fast_mnn.html), they perform normalisation and identification of HVGs on a merged Seurat object. However, in fastMNN publication, they performed separately for the samples and then took the intersection of the HVGs.
+
+```{r}
+# Run fastMNN
+head(VariableFeatures(seurat_merged), 20)
+seurat_merged <- RunFastMNN(
+    object.list = SplitObject(seurat_merged, split.by = "orig.ident"))
+Reductions(seurat_merged)    # mnn reduction added
+seurat_merged@reductions$mnn@cell.embeddings    # mnn matrix looks similar to PCA matrix
+seurat_merged <- RunUMAP(seurat_merged, reduction = "mnn", dims = 1:30)    # takes mnn as input
+seurat_merged <- FindNeighbors(seurat_merged, reduction = "mnn", dims = 1:30)
+seurat_merged <- FindClusters(seurat_merged)
+```
+
+```{r}
+DimPlot(seurat_merged, group.by = c("orig.ident", "seurat_clusters"))
+FeaturePlot(seurat_merged, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1", "DPP4"))
+```
+
+## FastMNN modified
+
+Performing as original paper - use interesection of HVGs for two samples for MNN
+Normalisation performed separately for the two samples
+
+```{r, message = FALSE, warning = FALSE}
+seurat_merged <- merge(x = seurat_objects[[1]], y = seurat_objects[[2]])
+hvgs <- intersect(VariableFeatures(seurat_objects[[1]]),
+                  VariableFeatures(seurat_objects[[2]]))
+VariableFeatures(seurat_merged) <- hvgs
+seurat_merged <- RunFastMNN(object.list = SplitObject(seurat_merged, 
+                                                      split.by = "orig.ident"))
+seurat_merged <- RunUMAP(seurat_merged, reduction = "mnn", dims = 1:30)
+seurat_merged <- FindNeighbors(seurat_merged, reduction = "mnn", dims = 1:30)
+seurat_merged <- FindClusters(seurat_merged)
+```
+
+```{r}
+DimPlot(seurat_merged, group.by = c("orig.ident", "seurat_clusters"))
+FeaturePlot(seurat_merged, 
+            features = c("CD3E", "CD4", "CD8A", "MS4A1", "CD14", "FCGR3A",
+                         "NCAM1", "KLRB1", "DPP4"))
+```
+
+Looks very similar to when HVGs were found on merged object
+This is because RunFastMNN in Seurat actually performs SelectIntegration anchors which finds top 2000 scoring features based on how many datasets they are found in
+
